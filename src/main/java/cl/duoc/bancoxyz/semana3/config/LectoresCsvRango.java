@@ -38,4 +38,25 @@ public final class LectoresCsvRango {
                 .lineMapper(lineMapper)
                 .build();
     }
+
+    /** Reader del CSV completo (master de remote chunking: el maestro lee y manda chunks). */
+    public static <T> FlatFileItemReader<T> completo(String nombre, Resource archivo,
+                                                     String[] columnas, Class<T> tipo) {
+        DelimitedLineTokenizer tokenizer = new DelimitedLineTokenizer();
+        tokenizer.setNames(columnas);
+
+        BeanWrapperFieldSetMapper<T> fieldSetMapper = new BeanWrapperFieldSetMapper<>();
+        fieldSetMapper.setTargetType(tipo);
+
+        DefaultLineMapper<T> lineMapper = new DefaultLineMapper<>();
+        lineMapper.setLineTokenizer(tokenizer);
+        lineMapper.setFieldSetMapper(fieldSetMapper);
+
+        return new FlatFileItemReaderBuilder<T>()
+                .name(nombre)
+                .resource(archivo)
+                .linesToSkip(1)
+                .lineMapper(lineMapper)
+                .build();
+    }
 }

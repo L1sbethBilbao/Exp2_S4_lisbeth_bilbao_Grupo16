@@ -59,7 +59,8 @@ CREATE TABLE transaccion_procesada (
     monto           NUMBER(12, 2)  NOT NULL,
     tipo            VARCHAR2(20)   NOT NULL,
     estado          VARCHAR2(20)   NOT NULL,
-    observacion     VARCHAR2(255)
+    observacion     VARCHAR2(255),
+    CONSTRAINT uq_transaccion_procesada_id UNIQUE (transaccion_id)
 )
 /
 
@@ -71,7 +72,8 @@ CREATE TABLE resumen_transacciones (
     total_creditos       NUMBER(14, 2)  NOT NULL,
     cantidad_debitos     NUMBER         NOT NULL,
     cantidad_creditos    NUMBER         NOT NULL,
-    job_execution_id     NUMBER
+    job_execution_id     NUMBER,
+    CONSTRAINT uq_resumen_transacciones_job UNIQUE (job_execution_id)
 )
 /
 
@@ -85,7 +87,8 @@ CREATE TABLE interes_procesado (
     tasa_aplicada      NUMBER(6, 4)   NOT NULL,
     interes_calculado  NUMBER(14, 2)  NOT NULL,
     saldo_final        NUMBER(14, 2)  NOT NULL,
-    estado             VARCHAR2(20)   NOT NULL
+    estado             VARCHAR2(20)   NOT NULL,
+    CONSTRAINT uq_interes_procesado_cuenta UNIQUE (cuenta_id)
 )
 /
 
@@ -96,7 +99,8 @@ CREATE TABLE movimiento_anual (
     transaccion   VARCHAR2(30)   NOT NULL,
     monto         NUMBER(14, 2)  NOT NULL,
     descripcion   VARCHAR2(200)  NOT NULL,
-    estado        VARCHAR2(20)   NOT NULL
+    estado        VARCHAR2(20)   NOT NULL,
+    CONSTRAINT uq_movimiento_anual_clave UNIQUE (cuenta_id, fecha, transaccion, monto, descripcion)
 )
 /
 
@@ -107,6 +111,7 @@ CREATE TABLE estado_cuenta_anual (
     total_depositos        NUMBER(14, 2)  NOT NULL,
     total_retiros          NUMBER(14, 2)  NOT NULL,
     saldo_neto             NUMBER(14, 2)  NOT NULL,
-    cantidad_movimientos   NUMBER         NOT NULL
+    cantidad_movimientos   NUMBER         NOT NULL,
+    CONSTRAINT uq_estado_cuenta_anual UNIQUE (cuenta_id, anio)
 )
 /

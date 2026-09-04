@@ -11,7 +11,8 @@ CREATE TABLE transaccion_procesada (
     monto           DECIMAL(12, 2) NOT NULL,
     tipo            VARCHAR(20)    NOT NULL,
     estado          VARCHAR(20)    NOT NULL,
-    observacion     VARCHAR(255)
+    observacion     VARCHAR(255),
+    CONSTRAINT uq_transaccion_procesada_id UNIQUE (transaccion_id)
 );
 
 CREATE TABLE resumen_transacciones (
@@ -22,7 +23,8 @@ CREATE TABLE resumen_transacciones (
     total_creditos       DECIMAL(14, 2) NOT NULL,
     cantidad_debitos     INT            NOT NULL,
     cantidad_creditos    INT            NOT NULL,
-    job_execution_id     BIGINT
+    job_execution_id     BIGINT,
+    CONSTRAINT uq_resumen_transacciones_job UNIQUE (job_execution_id)
 );
 
 CREATE TABLE interes_procesado (
@@ -35,7 +37,8 @@ CREATE TABLE interes_procesado (
     tasa_aplicada      DECIMAL(6, 4)  NOT NULL,
     interes_calculado  DECIMAL(14, 2) NOT NULL,
     saldo_final        DECIMAL(14, 2) NOT NULL,
-    estado             VARCHAR(20)    NOT NULL
+    estado             VARCHAR(20)    NOT NULL,
+    CONSTRAINT uq_interes_procesado_cuenta UNIQUE (cuenta_id)
 );
 
 CREATE TABLE movimiento_anual (
@@ -45,7 +48,8 @@ CREATE TABLE movimiento_anual (
     transaccion   VARCHAR(30)    NOT NULL,
     monto         DECIMAL(14, 2) NOT NULL,
     descripcion   VARCHAR(200)   NOT NULL,
-    estado        VARCHAR(20)    NOT NULL
+    estado        VARCHAR(20)    NOT NULL,
+    CONSTRAINT uq_movimiento_anual_clave UNIQUE (cuenta_id, fecha, transaccion, monto, descripcion)
 );
 
 CREATE TABLE estado_cuenta_anual (
@@ -55,5 +59,6 @@ CREATE TABLE estado_cuenta_anual (
     total_depositos        DECIMAL(14, 2) NOT NULL,
     total_retiros          DECIMAL(14, 2) NOT NULL,
     saldo_neto             DECIMAL(14, 2) NOT NULL,
-    cantidad_movimientos   INT            NOT NULL
+    cantidad_movimientos   INT            NOT NULL,
+    CONSTRAINT uq_estado_cuenta_anual UNIQUE (cuenta_id, anio)
 );

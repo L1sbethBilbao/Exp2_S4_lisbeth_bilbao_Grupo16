@@ -1,6 +1,7 @@
 package cl.duoc.bancoxyz.semana3.controllers;
 
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 import org.springframework.batch.core.JobExecution;
@@ -8,6 +9,8 @@ import org.springframework.batch.core.StepExecution;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -45,6 +48,16 @@ public class BatchJobController {
         body.put("interesesMensualesJob", respuesta(batchJobService.ejecutarIntereses()));
         body.put("estadosCuentaAnualesJob", respuesta(batchJobService.ejecutarEstadosCuenta()));
         return ResponseEntity.ok(body);
+    }
+
+    @PostMapping("/{jobExecutionId}/restart")
+    public ResponseEntity<Map<String, Object>> reanudar(@PathVariable long jobExecutionId) {
+        return ResponseEntity.ok(respuesta(batchJobService.reanudar(jobExecutionId)));
+    }
+
+    @GetMapping("/ejecuciones")
+    public ResponseEntity<List<Map<String, Object>>> ejecuciones() {
+        return ResponseEntity.ok(batchJobService.listarEjecuciones());
     }
 
     @ExceptionHandler(JobLaunchException.class)

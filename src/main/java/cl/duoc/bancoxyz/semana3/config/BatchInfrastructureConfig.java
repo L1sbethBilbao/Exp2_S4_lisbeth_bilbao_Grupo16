@@ -11,6 +11,7 @@ import org.springframework.transaction.PlatformTransactionManager;
 import cl.duoc.bancoxyz.semana3.listeners.BancoJobListener;
 import cl.duoc.bancoxyz.semana3.listeners.BancoSkipListener;
 import cl.duoc.bancoxyz.semana3.listeners.BancoStepListener;
+import io.micrometer.core.instrument.MeterRegistry;
 
 @Configuration
 public class BatchInfrastructureConfig {
@@ -40,7 +41,7 @@ public class BatchInfrastructureConfig {
     }
 
     @Bean
-    public BancoJobListener bancoJobListener() {
-        return new BancoJobListener();
+    public BancoJobListener bancoJobListener(MeterRegistry meterRegistry) {
+        return new BancoJobListener(meterRegistry);
     }
 }

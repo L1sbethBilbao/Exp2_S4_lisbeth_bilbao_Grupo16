@@ -8,20 +8,16 @@ import org.springframework.batch.core.configuration.annotation.StepScope;
 import org.springframework.batch.core.job.builder.JobBuilder;
 import org.springframework.batch.core.launch.support.RunIdIncrementer;
 import org.springframework.batch.core.partition.PartitionHandler;
-import org.springframework.batch.core.partition.support.TaskExecutorPartitionHandler;
 import org.springframework.batch.core.repository.JobRepository;
 import org.springframework.batch.core.step.builder.StepBuilder;
 import org.springframework.batch.core.step.tasklet.Tasklet;
 import org.springframework.batch.item.database.JdbcBatchItemWriter;
-import org.springframework.batch.item.database.builder.JdbcBatchItemWriterBuilder;
 import org.springframework.batch.item.file.FlatFileItemReader;
 import org.springframework.batch.repeat.RepeatStatus;
-import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.io.Resource;
-import org.springframework.core.task.TaskExecutor;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.retry.backoff.ExponentialBackOffPolicy;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -42,6 +38,9 @@ public class EstadosCuentaJobConfig {
 
     @Value("${bancoxyz.archivo.cuentas-anuales}")
     private Resource archivoCuentasAnuales;
+
+    @Value("${spring.sql.init.platform:oracle}")
+    private String sqlPlatform;
 
     @Bean
     public BancoRangoPartitioner cuentaAnualPartitioner() {
@@ -70,13 +69,7 @@ public class EstadosCuentaJobConfig {
 
     @Bean
     public JdbcBatchItemWriter<MovimientoAnualEntity> movimientoAnualItemWriter(DataSource dataSource) {
-        return new JdbcBatchItemWriterBuilder<MovimientoAnualEntity>()
-                .dataSource(dataSource)
-                .sql("INSERT INTO movimiento_anual "
-                        + "(cuenta_id, fecha, transaccion, monto, descripcion, estado) "
-                        + "VALUES (:cuentaId, :fecha, :transaccion, :monto, :descripcion, :estado)")
-                .beanMapped()
-                .build();
+        return IdempotentWriters.movimientos(dataSource, sqlPlatform);
     }
 
     @Bean
@@ -108,13 +101,9 @@ public class EstadosCuentaJobConfig {
     @Bean
     public PartitionHandler cuentaAnualPartitionHandler(
             Step procesarMovimientosAnualesWorkerStep,
-            @Qualifier("particionTaskExecutor") TaskExecutor particionTaskExecutor,
-            @Value("${bancoxyz.particion.grid-size:3}") int gridSize) {
-        TaskExecutorPartitionHandler handler = new TaskExecutorPartitionHandler();
-        handler.setStep(procesarMovimientosAnualesWorkerStep);
-        handler.setTaskExecutor(particionTaskExecutor);
-        handler.setGridSize(gridSize);
-        return handler;
+            EscaladoPartitionHandlerFactory escaladoPartitionHandlerFactory) {
+        return escaladoPartitionHandlerFactory.crear(
+                "procesarMovimientosAnualesWorkerStep", procesarMovimientosAnualesWorkerStep);
     }
 
     @Bean
@@ -130,6 +119,7 @@ public class EstadosCuentaJobConfig {
     @Bean
     public Tasklet generarEstadosCuentaTasklet(JdbcTemplate jdbcTemplate) {
         return (contribution, chunkContext) -> {
+            jdbcTemplate.update("DELETE FROM estado_cuenta_anual");
             jdbcTemplate.update("""
                     INSERT INTO estado_cuenta_anual
                         (cuenta_id, anio, total_depositos, total_retiros, saldo_neto, cantidad_movimientos)

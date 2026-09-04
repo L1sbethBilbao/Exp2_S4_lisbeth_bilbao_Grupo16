@@ -8,18 +8,14 @@ import org.springframework.batch.core.configuration.annotation.StepScope;
 import org.springframework.batch.core.job.builder.JobBuilder;
 import org.springframework.batch.core.launch.support.RunIdIncrementer;
 import org.springframework.batch.core.partition.PartitionHandler;
-import org.springframework.batch.core.partition.support.TaskExecutorPartitionHandler;
 import org.springframework.batch.core.repository.JobRepository;
 import org.springframework.batch.core.step.builder.StepBuilder;
 import org.springframework.batch.item.database.JdbcBatchItemWriter;
-import org.springframework.batch.item.database.builder.JdbcBatchItemWriterBuilder;
 import org.springframework.batch.item.file.FlatFileItemReader;
-import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.io.Resource;
-import org.springframework.core.task.TaskExecutor;
 import org.springframework.retry.backoff.ExponentialBackOffPolicy;
 import org.springframework.transaction.PlatformTransactionManager;
 
@@ -40,6 +36,9 @@ public class InteresesJobConfig {
 
     @Value("${bancoxyz.archivo.intereses}")
     private Resource archivoIntereses;
+
+    @Value("${spring.sql.init.platform:oracle}")
+    private String sqlPlatform;
 
     @Bean
     public BancoRangoPartitioner interesPartitioner() {
@@ -68,15 +67,7 @@ public class InteresesJobConfig {
 
     @Bean
     public JdbcBatchItemWriter<InteresEntity> interesItemWriter(DataSource dataSource) {
-        return new JdbcBatchItemWriterBuilder<InteresEntity>()
-                .dataSource(dataSource)
-                .sql("INSERT INTO interes_procesado "
-                        + "(cuenta_id, nombre, saldo_inicial, edad, tipo, tasa_aplicada, "
-                        + "interes_calculado, saldo_final, estado) "
-                        + "VALUES (:cuentaId, :nombre, :saldoInicial, :edad, :tipo, :tasaAplicada, "
-                        + ":interesCalculado, :saldoFinal, :estado)")
-                .beanMapped()
-                .build();
+        return IdempotentWriters.intereses(dataSource, sqlPlatform);
     }
 
     @Bean
@@ -108,13 +99,9 @@ public class InteresesJobConfig {
     @Bean
     public PartitionHandler interesPartitionHandler(
             Step calcularInteresesWorkerStep,
-            @Qualifier("particionTaskExecutor") TaskExecutor particionTaskExecutor,
-            @Value("${bancoxyz.particion.grid-size:3}") int gridSize) {
-        TaskExecutorPartitionHandler handler = new TaskExecutorPartitionHandler();
-        handler.setStep(calcularInteresesWorkerStep);
-        handler.setTaskExecutor(particionTaskExecutor);
-        handler.setGridSize(gridSize);
-        return handler;
+            EscaladoPartitionHandlerFactory escaladoPartitionHandlerFactory) {
+        return escaladoPartitionHandlerFactory.crear(
+                "calcularInteresesWorkerStep", calcularInteresesWorkerStep);
     }
 
     @Bean

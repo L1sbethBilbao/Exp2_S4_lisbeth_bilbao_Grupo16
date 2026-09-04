@@ -10,20 +10,17 @@ import org.springframework.batch.core.configuration.annotation.StepScope;
 import org.springframework.batch.core.job.builder.JobBuilder;
 import org.springframework.batch.core.launch.support.RunIdIncrementer;
 import org.springframework.batch.core.partition.PartitionHandler;
-import org.springframework.batch.core.partition.support.TaskExecutorPartitionHandler;
 import org.springframework.batch.core.repository.JobRepository;
 import org.springframework.batch.core.step.builder.StepBuilder;
 import org.springframework.batch.core.step.tasklet.Tasklet;
+import org.springframework.batch.integration.chunk.ChunkMessageChannelItemWriter;
 import org.springframework.batch.item.database.JdbcBatchItemWriter;
-import org.springframework.batch.item.database.builder.JdbcBatchItemWriterBuilder;
 import org.springframework.batch.item.file.FlatFileItemReader;
 import org.springframework.batch.repeat.RepeatStatus;
-import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.io.Resource;
-import org.springframework.core.task.TaskExecutor;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.retry.backoff.ExponentialBackOffPolicy;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -44,6 +41,9 @@ public class TransaccionesJobConfig {
 
     @Value("${bancoxyz.archivo.transacciones}")
     private Resource archivoTransacciones;
+
+    @Value("${spring.sql.init.platform:oracle}")
+    private String sqlPlatform;
 
     @Bean
     public BancoRangoPartitioner transaccionPartitioner() {
@@ -72,13 +72,16 @@ public class TransaccionesJobConfig {
 
     @Bean
     public JdbcBatchItemWriter<TransaccionEntity> transaccionItemWriter(DataSource dataSource) {
-        return new JdbcBatchItemWriterBuilder<TransaccionEntity>()
-                .dataSource(dataSource)
-                .sql("INSERT INTO transaccion_procesada "
-                        + "(transaccion_id, fecha, monto, tipo, estado, observacion) "
-                        + "VALUES (:transaccionId, :fecha, :monto, :tipo, :estado, :observacion)")
-                .beanMapped()
-                .build();
+        return IdempotentWriters.transacciones(dataSource, sqlPlatform);
+    }
+
+    @Bean
+    public FlatFileItemReader<TransaccionDTO> transaccionItemReaderCompleto() {
+        return LectoresCsvRango.completo(
+                "transaccionItemReaderCompleto",
+                archivoTransacciones,
+                new String[] {"id", "fecha", "monto", "tipo"},
+                TransaccionDTO.class);
     }
 
     @Bean
@@ -110,13 +113,24 @@ public class TransaccionesJobConfig {
     @Bean
     public PartitionHandler transaccionPartitionHandler(
             Step procesarTransaccionesWorkerStep,
-            @Qualifier("particionTaskExecutor") TaskExecutor particionTaskExecutor,
-            @Value("${bancoxyz.particion.grid-size:3}") int gridSize) {
-        TaskExecutorPartitionHandler handler = new TaskExecutorPartitionHandler();
-        handler.setStep(procesarTransaccionesWorkerStep);
-        handler.setTaskExecutor(particionTaskExecutor);
-        handler.setGridSize(gridSize);
-        return handler;
+            EscaladoPartitionHandlerFactory escaladoPartitionHandlerFactory) {
+        return escaladoPartitionHandlerFactory.crear(
+                "procesarTransaccionesWorkerStep", procesarTransaccionesWorkerStep);
+    }
+
+    @Bean
+    public Step procesarTransaccionesChunkMasterStep(JobRepository jobRepository,
+                                                     PlatformTransactionManager transactionManager,
+                                                     FlatFileItemReader<TransaccionDTO> transaccionItemReaderCompleto,
+                                                     ChunkMessageChannelItemWriter<TransaccionDTO> transaccionChunkMessageWriter,
+                                                     BancoStepListener bancoStepListener) {
+        return new StepBuilder("procesarTransaccionesChunkMasterStep", jobRepository)
+                .<TransaccionDTO, TransaccionDTO>chunk(
+                        BatchInfrastructureConfig.CHUNK_SIZE, transactionManager)
+                .reader(transaccionItemReaderCompleto)
+                .writer(transaccionChunkMessageWriter)
+                .listener(bancoStepListener)
+                .build();
     }
 
     @Bean
@@ -133,6 +147,7 @@ public class TransaccionesJobConfig {
     public Tasklet resumenTransaccionesTasklet(JdbcTemplate jdbcTemplate) {
         return (contribution, chunkContext) -> {
             Long jobExecutionId = chunkContext.getStepContext().getStepExecution().getJobExecutionId();
+            jdbcTemplate.update("DELETE FROM resumen_transacciones WHERE job_execution_id = ?", jobExecutionId);
             jdbcTemplate.update("""
                     INSERT INTO resumen_transacciones
                         (fecha_proceso, total_validas, total_debitos, total_creditos,
@@ -162,12 +177,17 @@ public class TransaccionesJobConfig {
     @Bean
     public Job transaccionesDiariasJob(JobRepository jobRepository,
                                        Step procesarTransaccionesMasterStep,
+                                       Step procesarTransaccionesChunkMasterStep,
                                        Step generarResumenTransaccionesStep,
-                                       BancoJobListener bancoJobListener) {
+                                       BancoJobListener bancoJobListener,
+                                       EscaladoPartitionHandlerFactory escaladoPartitionHandlerFactory) {
+        Step primerStep = escaladoPartitionHandlerFactory.usaChunkingRemoto()
+                ? procesarTransaccionesChunkMasterStep
+                : procesarTransaccionesMasterStep;
         return new JobBuilder("transaccionesDiariasJob", jobRepository)
                 .incrementer(new RunIdIncrementer())
                 .listener(bancoJobListener)
-                .start(procesarTransaccionesMasterStep)
+                .start(primerStep)
                 .next(generarResumenTransaccionesStep)
                 .build();
     }
